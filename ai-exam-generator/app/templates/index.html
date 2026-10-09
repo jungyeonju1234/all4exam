@@ -1,0 +1,1621 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 맞춤형 시험 문제 생성기 | AI Exam Studio</title>
+    <!-- Tailwind CSS -->
+    <script src="/static/tailwind.js"></script>
+    <script>
+        if (typeof tailwind !== 'undefined') {
+            tailwind.config = {
+                theme: {
+                    extend: {
+                        colors: {
+                            brand: {
+                                50: '#eef2ff',
+                                100: '#e0e7ff',
+                                500: '#6366f1',
+                                600: '#4f46e5',
+                                700: '#4338ca',
+                                900: '#312e81',
+                            }
+                        },
+                        fontFamily: {
+                            sans: ['Pretendard', 'Noto Sans KR', 'sans-serif'],
+                            serif: ['Batang', 'KoPub Batang', 'serif']
+                        }
+                    }
+                }
+            };
+        }
+    </script>
+    <!-- Vue 3 -->
+    <script src="/static/vue.global.prod.js"></script>
+    <!-- Pretendard Font -->
+    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+
+    <style>
+        body {
+            font-family: 'Pretendard', sans-serif;
+            background-color: #f8fafc;
+        }
+        .exam-paper {
+            font-family: 'Batang', 'KoPub Batang', serif;
+            background: #ffffff;
+            box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.08);
+        }
+        @media print {
+            body {
+                background: white;
+                color: black;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .exam-paper {
+                box-shadow: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+            }
+            .page-break {
+                page-break-before: always;
+            }
+        }
+        [v-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="min-h-screen text-slate-800">
+    <div id="app" v-cloak class="flex flex-col min-h-screen">
+        
+        <!-- Top Navigation Bar -->
+        <header class="bg-white border-b border-slate-200 sticky top-0 z-40 no-print">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+                <div class="flex items-center space-x-3 cursor-pointer" @click="resetToStep(1)">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-md shadow-indigo-100 font-black text-lg">
+                        ✦
+                    </div>
+                    <div>
+                        <h1 class="text-lg font-bold text-slate-900 leading-tight">AI Exam Studio</h1>
+                        <p class="text-xs text-slate-500 font-medium">Cerebras · Groq · DeepSeek · Solar · OpenAI</p>
+                    </div>
+                </div>
+
+                <!-- Active AI Provider Badge & Settings Button -->
+                <div class="flex items-center space-x-3">
+                    <button 
+                        @click="openSettingsModal" 
+                        class="flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition border shadow-sm"
+                        :class="hasApiKey ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100' : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'"
+                    >
+                        <span class="w-2 h-2 rounded-full" :class="hasApiKey ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'"></span>
+                        <span>{{ currentProviderName }}: {{ currentModelId }}</span>
+                        <span class="text-slate-400">⚙</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Step Indicator -->
+        <div class="bg-white border-b border-slate-200 py-3 no-print">
+            <div class="max-w-4xl mx-auto px-4">
+                <div class="flex items-center justify-between">
+                    <div v-for="(s, idx) in steps" :key="idx" class="flex items-center flex-1" :class="{'opacity-40': currentStep < s.step}">
+                        <div class="flex items-center space-x-2 cursor-pointer" @click="canNavigateTo(s.step) && (currentStep = s.step)">
+                            <div 
+                                class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition"
+                                :class="currentStep === s.step ? 'bg-indigo-600 text-white ring-4 ring-indigo-50 shadow' : (currentStep > s.step ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600')"
+                            >
+                                <span v-if="currentStep > s.step">✓</span>
+                                <span v-else>{{ s.step }}</span>
+                            </div>
+                            <span class="text-xs font-semibold" :class="currentStep === s.step ? 'text-indigo-600 font-bold' : 'text-slate-700'">{{ s.title }}</span>
+                        </div>
+                        <div v-if="idx < steps.length - 1" class="flex-1 mx-3 h-0.5 bg-slate-200">
+                            <div class="h-full bg-emerald-500 transition-all" :style="{width: currentStep > s.step ? '100%' : '0%'}"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            
+            <!-- Global Alert -->
+            <div v-if="errorMessage" class="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 flex items-start justify-between no-print shadow-sm">
+                <div class="flex items-start space-x-2">
+                    <span class="text-red-500 font-bold">⚠️</span>
+                    <div>
+                        <p class="font-bold text-sm">알림</p>
+                        <p class="text-xs mt-0.5 whitespace-pre-line leading-relaxed">{{ errorMessage }}</p>
+                    </div>
+                </div>
+                <button @click="errorMessage = ''" class="text-red-400 hover:text-red-600 font-bold text-sm ml-4">✕</button>
+            </div>
+
+            <!-- Loading Overlay when generating -->
+            <div 
+                v-if="isGenerating" 
+                class="max-w-xl mx-auto my-16 p-8 bg-white rounded-2xl border border-slate-200 shadow-xl text-center no-print"
+                style="display: none;"
+                :style="{ display: isGenerating ? 'block' : 'none' }"
+            >
+                <div class="w-16 h-16 mx-auto mb-4 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+                <h3 class="text-lg font-bold text-slate-900 mb-1">
+                    수능 국어 {{ questionCount }}문항을 출제하고 있습니다
+                </h3>
+                <p class="text-xs text-slate-500 leading-relaxed mb-4">
+                    선택하신 <span class="font-bold text-indigo-600">{{ currentProviderName }} ({{ currentModelId }})</span> 엔진이<br>
+                    <strong>[{{ difficulty }}]</strong> 수준의 국어 킬러 문항을 정밀 연역 추론 중입니다...
+                </p>
+                <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                    <div class="bg-indigo-600 h-full w-2/3 animate-pulse"></div>
+                </div>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- STEP 1: FILE UPLOAD & PAGE RANGE -->
+            <!-- ============================================================ -->
+            <div v-if="currentStep === 1 && !isGenerating" class="max-w-3xl mx-auto">
+                <div class="text-center mb-8">
+                    <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-bold mb-2 bg-indigo-100 text-indigo-800 border border-indigo-300">
+                        <span>📖</span>
+                        <span>수능 국어 영역 (독서·문학) 전문 출제</span>
+                    </div>
+                    <h2 class="text-2xl sm:text-3xl font-bold text-slate-900">학습 자료 및 시험 원본 파일 업로드</h2>
+                    <p class="mt-2 text-sm text-slate-600">
+                        PDF, 한글(HWP/HWPX), Word, PPT, 이미지를 업로드하면 <span class="font-bold text-indigo-600">{{ currentProviderName }}</span> AI가 지문과 핵심 자료를 추출합니다.
+                    </p>
+                </div>
+
+                <!-- Page Range Filter Box -->
+                <div class="mb-4 bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                            <span>📑</span>
+                            <span>추출할 페이지 / 슬라이드 범위 지정 (선택사항)</span>
+                        </label>
+                        <span class="text-[11px] text-slate-400">비워두면 파일 전체를 추출합니다</span>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <input 
+                            type="text" 
+                            v-model="pageRangeInput" 
+                            placeholder="예: 1-3, 5 또는 2, 4, 7-9 (비워둘 시 전체)"
+                            class="flex-1 px-3.5 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                        >
+                        <button 
+                            v-if="pageRangeInput" 
+                            @click="pageRangeInput = ''" 
+                            class="px-2.5 py-2 text-xs text-slate-500 hover:text-slate-800 bg-slate-100 rounded-lg"
+                        >
+                            초기화
+                        </button>
+                    </div>
+                    <p class="text-[11px] text-slate-500 mt-1.5">
+                        * 특정 페이지만 골라서 문제를 만들고 싶을 때 <strong>1-3</strong>(1~3페이지), <strong>2, 5</strong>(2장과 5장) 형식으로 입력하세요.
+                    </p>
+                </div>
+
+                <!-- Drag & Drop Upload Card -->
+                <div 
+                    @dragover.prevent="isDragging = true"
+                    @dragleave.prevent="isDragging = false"
+                    @drop.prevent="handleDrop"
+                    class="border-2 border-dashed rounded-2xl p-10 text-center transition bg-white"
+                    :class="isDragging ? 'border-indigo-500 bg-indigo-50/50 scale-[1.01]' : 'border-slate-300 hover:border-indigo-400'"
+                >
+                    <input type="file" ref="fileInput" @change="handleFileSelect" class="hidden" accept=".pdf,.docx,.pptx,.hwpx,.hwp,.png,.jpg,.jpeg,.txt">
+                    
+                    <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-3xl">
+                        {{ currentSubjectIcon }}
+                    </div>
+
+                    <h3 class="text-base font-bold text-slate-900 mb-1">파일을 마우스로 끌어다 놓거나 클릭하여 선택하세요</h3>
+                    <p class="text-xs text-slate-500 mb-4">지원 형식: PDF, HWP, HWPX, DOCX, PPTX, PNG, JPG, TXT</p>
+
+                    <button 
+                        @click="$refs.fileInput.click()" 
+                        class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl shadow-md shadow-indigo-100 transition"
+                        :disabled="isAnalyzing"
+                    >
+                        <span v-if="isAnalyzing">문서 분석 중...</span>
+                        <span v-else>컴퓨터에서 파일 선택</span>
+                    </button>
+                </div>
+
+                <!-- Korean Sample Presets -->
+                <div class="mt-8 bg-slate-50 rounded-2xl p-5 border border-slate-200">
+                    <p class="text-xs font-bold text-slate-700 mb-3 flex items-center justify-between">
+                        <span class="flex items-center"><span class="mr-1.5">💡</span> [수능 국어] 추천 기출·EBS 연계 샘플 지문</span>
+                        <span class="text-[11px] text-indigo-600 font-semibold">클릭 시 즉시 로드</span>
+                    </p>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <button 
+                            v-for="smp in samplePresets" 
+                            :key="smp.id"
+                            @click="loadSample(smp.id)" 
+                            class="p-3 bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-xl text-left transition shadow-sm flex flex-col justify-between"
+                        >
+                            <div>
+                                <span class="text-xs font-bold text-indigo-700 block mb-1">{{ smp.title }}</span>
+                                <span class="text-[11px] text-slate-500 block line-clamp-2 leading-relaxed">{{ smp.desc }}</span>
+                            </div>
+                            <span class="text-[10px] text-slate-400 mt-2 block font-mono">수능 실전 난이도</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- STEP 2: SUMMARY CONFIRMATION & PASSAGE EDIT & QUESTION STYLE REVIEW -->
+            <!-- ============================================================ -->
+            <div v-if="currentStep === 2 && !isGenerating" class="max-w-5xl mx-auto">
+                <div class="text-center mb-6">
+                    <span class="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-xs font-bold uppercase tracking-wider">Step 2 : 지문 범위 수정 & 검토</span>
+                    <h2 class="text-2xl font-bold text-slate-900 mt-2">출제 지문 내용 수정 및 검토</h2>
+                    <p class="text-xs text-slate-500 mt-1">AI가 추출한 지문에서 불필요한 부분을 삭제하거나 직접 수정하여 출제 범위를 확정하세요.</p>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    <!-- Left: Tabbed Content Editor (Summary vs Editable Passage) -->
+                    <div class="lg:col-span-7 bg-white rounded-2xl p-6 border-2 border-indigo-200 shadow-md flex flex-col">
+                        
+                        <!-- Top Header with Filename & Mode Switch Tabs -->
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
+                            <!-- Tabs -->
+                            <div class="flex items-center space-x-1 bg-slate-100 p-1 rounded-xl">
+                                <button 
+                                    @click="step2Tab = 'edit'" 
+                                    class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1.5"
+                                    :class="step2Tab === 'edit' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
+                                >
+                                    <span>✍️ 지문 직접 수정/편집</span>
+                                    <span class="px-1.5 py-0.2 bg-indigo-50 text-[10px] rounded-full text-indigo-600 font-mono">{{ parsedData.passage ? parsedData.passage.length : 0 }}자</span>
+                                </button>
+                                <button 
+                                    @click="step2Tab = 'summary'" 
+                                    class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1"
+                                    :class="step2Tab === 'summary' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
+                                >
+                                    <span>📌 AI 핵심 요약</span>
+                                </button>
+                            </div>
+
+                            <span class="text-xs px-2.5 py-1 rounded bg-slate-100 text-slate-600 font-mono text-center sm:text-right truncate max-w-[200px]" :title="parsedData.filename">
+                                {{ parsedData.filename }}
+                            </span>
+                        </div>
+
+                        <!-- TAB 1: EDITABLE PASSAGE (Default view for clear editing) -->
+                        <div v-show="step2Tab === 'edit'" class="flex-1 flex flex-col">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-xs font-black text-indigo-900">📝 출제 본문 지문 에디터</span>
+                                    <span class="text-[11px] text-emerald-600 font-semibold">● 직접 수정 가능</span>
+                                </div>
+                                <button 
+                                    v-if="originalPassageBackup && originalPassageBackup !== parsedData.passage"
+                                    @click="parsedData.passage = originalPassageBackup" 
+                                    class="text-[11px] text-slate-500 hover:text-indigo-600 font-bold underline flex items-center space-x-1"
+                                    title="처음 파싱된 원문 상태로 되돌립니다"
+                                >
+                                    <span>🔄 원문 복원</span>
+                                </button>
+                            </div>
+                            <p class="text-[11px] text-slate-500 mb-2 leading-relaxed">
+                                💡 문제를 출제할 영역만 남기거나, 문장을 직접 가다듬을 수 있습니다. <strong>여기 적힌 본문으로 문제가 생성됩니다.</strong>
+                            </p>
+                            <textarea 
+                                v-model="parsedData.passage" 
+                                rows="12" 
+                                placeholder="출제할 지문 내용을 입력하거나 수정하세요..."
+                                class="w-full p-4 bg-slate-50/70 text-xs leading-relaxed text-slate-900 rounded-xl border-2 border-indigo-300 focus:border-indigo-600 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-100 font-serif flex-1 resize-y transition shadow-inner"
+                            ></textarea>
+                            <div class="flex justify-between items-center text-[11px] text-slate-400 mt-1.5 font-mono">
+                                <span>{{ parsedData.page_info || '페이지 정보 없음' }}</span>
+                                <span class="font-bold text-indigo-600">{{ parsedData.passage ? parsedData.passage.length : 0 }}자 작성 중</span>
+                            </div>
+                        </div>
+
+                        <!-- TAB 2: AI SUMMARY -->
+                        <div v-show="step2Tab === 'summary'" class="flex-1 flex flex-col">
+                            <div class="text-xs font-bold text-slate-700 mb-2 flex items-center">
+                                <span class="mr-1.5">📌</span> AI 지문 구조 및 핵심 논점 요약
+                            </div>
+                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-4 flex-1 overflow-y-auto max-h-[340px]">
+                                <div class="whitespace-pre-line text-sm text-slate-800 leading-relaxed font-sans">
+                                    {{ parsedData.summary || '요약본을 생성 중입니다...' }}
+                                </div>
+                            </div>
+                            <button 
+                                @click="step2Tab = 'edit'" 
+                                class="py-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg text-center transition"
+                            >
+                                ✍️ 지문 본문 직접 수정하러 가기 →
+                            </button>
+                        </div>
+
+                        <!-- Confirmation Checkbox -->
+                        <div class="mt-4 p-3.5 bg-emerald-50 border-2 border-emerald-300 rounded-xl flex items-center justify-between">
+                            <label class="flex items-center space-x-2.5 cursor-pointer select-none">
+                                <input type="checkbox" v-model="isSummaryConfirmed" class="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500">
+                                <span class="text-xs font-black text-emerald-950">지문 내용 및 출제 범위를 확인했습니다 (컨펌 완료)</span>
+                            </label>
+                            <span v-if="isSummaryConfirmed" class="text-xs text-emerald-700 font-black">
+                                ✓ 확인 완료
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Right: Question Style / Template Card -->
+                    <div class="lg:col-span-5 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center space-x-2 mb-4 pb-3 border-b border-slate-100">
+                                <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                                    📋
+                                </div>
+                                <div>
+                                    <h3 class="text-sm font-bold text-slate-900">문제 양식 (템플릿) 설정</h3>
+                                    <p class="text-[11px] text-slate-500">지문에 포함된 양식 또는 종합 수능형</p>
+                                </div>
+                            </div>
+
+                            <!-- Detected Style Notice -->
+                            <div v-if="parsedData.detected_style && parsedData.detected_style.has_question_style" class="p-3 bg-indigo-50 border border-indigo-200 rounded-xl mb-4">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs font-bold text-indigo-900">
+                                        🏷️ 파일 내 문제 양식 감지됨!
+                                    </span>
+                                    <span class="text-[10px] bg-indigo-200 text-indigo-800 px-2 py-0.5 rounded font-bold">자동 추출</span>
+                                </div>
+                                <p class="text-xs text-indigo-800 mt-1 font-semibold">{{ parsedData.detected_style.template_name }}</p>
+                                <p class="text-[11px] text-indigo-700 mt-0.5">{{ parsedData.detected_style.description }}</p>
+                            </div>
+
+                            <!-- Template Selector -->
+                            <div class="space-y-2 mb-4">
+                                <label class="text-xs font-bold text-slate-700 block">적용할 문제 양식 선택:</label>
+                                <div 
+                                    v-for="tpl in templatePresets" 
+                                    :key="tpl.id"
+                                    @click="selectedTemplate = tpl.name"
+                                    class="p-3 rounded-xl border transition cursor-pointer text-left"
+                                    :class="selectedTemplate === tpl.name ? 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-slate-300 bg-white'"
+                                >
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs font-bold text-slate-900">{{ tpl.name }}</span>
+                                        <span v-if="selectedTemplate === tpl.name" class="text-indigo-600 font-bold text-xs">●</span>
+                                    </div>
+                                    <p class="text-[11px] text-slate-500 mt-0.5">{{ tpl.desc }}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Proceed Button -->
+                        <div class="pt-4 border-t border-slate-100 flex items-center space-x-3">
+                            <button @click="currentStep = 1" class="px-4 py-2.5 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition">
+                                이전
+                            </button>
+                            <button 
+                                @click="goToStep3" 
+                                class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-100 transition flex items-center justify-center space-x-1"
+                                :disabled="!isSummaryConfirmed || !parsedData.passage"
+                                :class="{'opacity-50 cursor-not-allowed': !isSummaryConfirmed || !parsedData.passage}"
+                            >
+                                <span>다음: 출제 옵션 설정</span>
+                                <span class="font-bold">→</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- STEP 3: DIFFICULTY & GENERATION OPTIONS -->
+            <!-- ============================================================ -->
+            <div v-if="currentStep === 3 && !isGenerating" class="max-w-4xl mx-auto">
+                <div class="text-center mb-8">
+                    <span class="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-xs font-bold uppercase tracking-wider">Step 3 : 출제 조건</span>
+                    <h2 class="text-2xl sm:text-3xl font-bold text-slate-900 mt-2">출제 난이도 및 문항 수 설정</h2>
+                    <p class="text-xs text-slate-500 mt-1">심화 및 극악 킬러 난이도에서는 정교한 다층 연역 추론과 매력적인 함정 선지, 다양한 유형이 배정됩니다.</p>
+                </div>
+
+                <div class="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
+                    <!-- Difficulty Selection (4 Tiers) -->
+                    <div>
+                        <label class="text-sm font-bold text-slate-900 block mb-3">
+                            난이도 선택 <span class="text-xs font-normal text-slate-500">(선택한 난이도에 맞춰 지문의 추론 깊이와 선지 함정 강도가 조절됩니다)</span>
+                        </label>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <!-- Level 1: High 2 Basic -->
+                            <div 
+                                @click="setDifficulty('고2 기본')"
+                                class="p-4 rounded-xl border-2 transition cursor-pointer select-none"
+                                :class="difficulty === '고2 기본' ? 'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-200 shadow-sm' : 'border-slate-200 hover:border-slate-300 bg-white'"
+                            >
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">기본</span>
+                                    <span v-if="difficulty === '고2 기본'" class="text-emerald-600 font-bold text-sm">✓</span>
+                                </div>
+                                <h4 class="text-sm font-bold text-slate-900 mt-2">고2 표준 수준</h4>
+                                <p class="text-[11px] text-slate-500 mt-1 leading-relaxed">전국학평 고2 수준. 핵심 개념 및 문맥적 의미 파악</p>
+                            </div>
+
+                            <!-- Level 2: High 3 Advanced -->
+                            <div 
+                                @click="setDifficulty('고3 심화')"
+                                class="p-4 rounded-xl border-2 transition cursor-pointer select-none"
+                                :class="difficulty === '고3 심화' ? 'border-amber-500 bg-amber-50/70 ring-2 ring-amber-200 shadow-sm' : 'border-slate-200 hover:border-slate-300 bg-white'"
+                            >
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded">심화</span>
+                                    <span v-if="difficulty === '고3 심화'" class="text-amber-600 font-bold text-sm">✓</span>
+                                </div>
+                                <h4 class="text-sm font-bold text-slate-900 mt-2">고3 모의평가</h4>
+                                <p class="text-[11px] text-slate-500 mt-1 leading-relaxed">수능/평가원 수준. 2단계 복합 추론 및 매력적 함정 선지</p>
+                            </div>
+
+                            <!-- Level 3: Killer -->
+                            <div 
+                                @click="setDifficulty('수능 킬러 (1등급 변별)')"
+                                class="p-4 rounded-xl border-2 transition cursor-pointer select-none"
+                                :class="difficulty === '수능 킬러 (1등급 변별)' ? 'border-rose-500 bg-rose-50/70 ring-2 ring-rose-200 shadow-sm' : 'border-slate-200 hover:border-slate-300 bg-white'"
+                            >
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-xs font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded">🔥 1등급 변별</span>
+                                    <span v-if="difficulty === '수능 킬러 (1등급 변별)'" class="text-rose-600 font-bold text-sm">✓</span>
+                                </div>
+                                <h4 class="text-sm font-bold text-slate-900 mt-2">수능 킬러 문항</h4>
+                                <p class="text-[11px] text-slate-500 mt-1 leading-relaxed">정답률 20~30%대. 숨겨진 전제 추론, &lt;보기&gt; 심층 적용</p>
+                            </div>
+
+                            <!-- Level 4: Extreme Killer (New) -->
+                            <div 
+                                @click="setDifficulty('극악 킬러 (만점 방지용)')"
+                                class="p-4 rounded-xl border-2 transition cursor-pointer select-none relative overflow-hidden"
+                                :class="difficulty === '극악 킬러 (만점 방지용)' ? 'border-purple-600 bg-purple-50/80 ring-2 ring-purple-300 shadow-sm' : 'border-slate-200 hover:border-purple-200 bg-white'"
+                            >
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-xs font-extrabold text-purple-800 bg-purple-200 px-2 py-0.5 rounded animate-pulse">💀 만점 방지</span>
+                                    <span v-if="difficulty === '극악 킬러 (만점 방지용)'" class="text-purple-600 font-bold text-sm">✓</span>
+                                </div>
+                                <h4 class="text-sm font-black text-slate-900 mt-2">극악 킬러 (만점방지)</h4>
+                                <p class="text-[11px] text-slate-600 mt-1 leading-relaxed">정답률 10%대. 3~4단계 다층 연역 추론, 초고난도 논리 함정</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Question Count Selection (Direct Input + Slider + Presets) -->
+                    <div class="pt-4 border-t border-slate-100">
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <label class="text-sm font-bold text-slate-900 block">생성할 문항 수</label>
+                                <span class="text-[11px] text-slate-500">슬라이더를 조절하거나 직접 숫자를 입력하세요 (1~20문항)</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <input 
+                                    type="number" 
+                                    min="1" 
+                                    max="20" 
+                                    v-model.number="questionCount" 
+                                    class="w-16 px-2.5 py-1.5 text-center text-sm font-black text-indigo-700 bg-indigo-50 border-2 border-indigo-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                >
+                                <span class="text-xs font-bold text-slate-700">문항</span>
+                            </div>
+                        </div>
+
+                        <!-- Range Slider -->
+                        <input 
+                            type="range" 
+                            min="1" 
+                            max="15" 
+                            step="1" 
+                            v-model.number="questionCount" 
+                            class="w-full h-2.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                        >
+                        
+                        <!-- Quick Presets -->
+                        <div class="flex flex-wrap items-center gap-1.5 mt-3">
+                            <span class="text-[11px] font-bold text-slate-400 mr-1">빠른 선택:</span>
+                            <button 
+                                @click="questionCount = 2" 
+                                class="px-2.5 py-1 text-xs rounded-lg border transition font-bold"
+                                :class="questionCount === 2 ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border-slate-200'"
+                            >
+                                2문항 (테스트)
+                            </button>
+                            <button 
+                                @click="questionCount = 3" 
+                                class="px-2.5 py-1 text-xs rounded-lg border transition font-bold"
+                                :class="questionCount === 3 ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border-slate-200'"
+                            >
+                                3문항 (기본 1세트)
+                            </button>
+                            <button 
+                                @click="questionCount = 5" 
+                                class="px-2.5 py-1 text-xs rounded-lg border transition font-bold"
+                                :class="questionCount === 5 ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border-slate-200'"
+                            >
+                                5문항 (단원 평가)
+                            </button>
+                            <button 
+                                @click="questionCount = 10" 
+                                class="px-2.5 py-1 text-xs rounded-lg border transition font-bold"
+                                :class="questionCount === 10 ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border-slate-200'"
+                            >
+                                10문항 (하프 모의고사)
+                            </button>
+                            <button 
+                                @click="questionCount = 15" 
+                                class="px-2.5 py-1 text-xs rounded-lg border transition font-bold"
+                                :class="questionCount === 15 ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border-slate-200'"
+                            >
+                                15문항 (심화 풀세트)
+                            </button>
+                        </div>
+
+                        <div v-if="questionCount >= 7" class="mt-2.5 p-2 bg-indigo-50 border border-indigo-200 rounded-lg text-[11px] text-indigo-800 flex items-center space-x-1.5">
+                            <span>✨</span>
+                            <span><strong>{{ questionCount }}문항 대량 출제 모드</strong>: AI 배치(Batch) 생성 기술로 문항 번호와 중복을 완벽히 제어하여 고품질로 출제합니다.</span>
+                        </div>
+                    </div>
+
+                    <!-- Current AI Model info -->
+                    <div class="p-3.5 bg-indigo-50/70 rounded-xl border border-indigo-100 flex items-center justify-between text-xs">
+                        <span class="text-slate-700">사용 엔진: <strong class="text-indigo-700">{{ currentProviderName }} ({{ currentModelId }})</strong></span>
+                        <button @click="openSettingsModal" class="text-indigo-600 font-bold hover:underline">엔진/키 변경</button>
+                    </div>
+
+                    <!-- Generate Trigger Button -->
+                    <div class="pt-4 border-t border-slate-100 flex items-center space-x-3">
+                        <button @click="currentStep = 2" class="px-5 py-3 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition">
+                            이전
+                        </button>
+                        <button 
+                            @click="startGeneratingQuestions" 
+                            class="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-lg shadow-indigo-100 transition flex items-center justify-center space-x-2 cursor-pointer"
+                        >
+                            <span>✨ 수능 국어 {{ questionCount }}문항 출제 시작</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- STEP 4: EXAM PAPER VIEW (수능 문제 중심 + 인터랙티브 답안 체크 & 채점) -->
+            <!-- ============================================================ -->
+            <div v-if="currentStep === 4 && !isGenerating" class="max-w-5xl mx-auto">
+                
+                <!-- Action Controls Bar (No Print) -->
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-6 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm no-print">
+                    <div class="flex items-center space-x-2">
+                        <span class="px-2.5 py-1 rounded bg-indigo-50 text-indigo-700 text-xs font-bold">
+                            국어 영역 (독서·문학)
+                        </span>
+                        <span class="px-2.5 py-1 rounded bg-slate-100 text-slate-700 text-xs font-bold">
+                            난이도: {{ currentDifficulty }}
+                        </span>
+                        <span class="px-2.5 py-1 rounded bg-slate-100 text-slate-600 text-xs font-bold">
+                            총 {{ examQuestions.length }}문항
+                        </span>
+                        <span v-if="isGraded" class="px-2.5 py-1 rounded bg-emerald-50 text-emerald-700 text-xs font-bold">
+                            채점 완료
+                        </span>
+                    </div>
+
+                    <div class="flex items-center space-x-2">
+                        <!-- Score / Grading Button -->
+                        <button 
+                            v-if="!isGraded"
+                            @click="gradeExam" 
+                            class="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-100 transition flex items-center space-x-1.5"
+                        >
+                            <span>📝 답안 제출 및 자동 채점</span>
+                        </button>
+                        <button 
+                            v-else
+                            @click="resetGrading" 
+                            class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center space-x-1"
+                        >
+                            <span>🔄 다시 풀기</span>
+                        </button>
+
+                        <button 
+                            @click="showAnswersAll = !showAnswersAll" 
+                            class="px-3.5 py-2 rounded-xl text-xs font-bold border transition flex items-center space-x-1.5"
+                            :class="showAnswersAll ? 'bg-amber-50 text-amber-800 border-amber-300' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'"
+                        >
+                            <span>💡 {{ showAnswersAll ? '정답/해설 숨기기' : '정답 및 상세 해설' }}</span>
+                        </button>
+                        
+                        <button 
+                            @click="printExam" 
+                            class="px-4 py-2 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-bold shadow transition flex items-center space-x-1.5"
+                        >
+                            <span>🖨️ 인쇄 / PDF 저장</span>
+                        </button>
+
+                        <button 
+                            @click="resetToStep(1)" 
+                            class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center space-x-1"
+                        >
+                            <span>➕ 새 파일</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Grading Result Banner (When Graded) -->
+                <div v-if="isGraded" class="mb-6 bg-gradient-to-r from-indigo-900 to-slate-900 text-white p-6 rounded-2xl shadow-xl no-print flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div class="flex items-center space-x-4">
+                        <div class="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center text-3xl font-black">
+                            <span v-if="gradeScore.scorePercent >= 80">🏆</span>
+                            <span v-else-if="gradeScore.scorePercent >= 50">🎯</span>
+                            <span v-else>💡</span>
+                        </div>
+                        <div>
+                            <div class="flex items-center space-x-2">
+                                <span class="text-xs font-bold uppercase tracking-wider text-indigo-300">채점 결과 리포트</span>
+                                <span class="text-[10px] px-2 py-0.5 rounded-full font-bold" :class="gradeScore.scorePercent >= 80 ? 'bg-emerald-500/30 text-emerald-300' : 'bg-amber-500/30 text-amber-300'">
+                                    {{ currentDifficulty }}
+                                </span>
+                            </div>
+                            <h3 class="text-2xl font-black mt-0.5">
+                                {{ gradeScore.correctCount }} / {{ examQuestions.length }} 문항 정답
+                                <span class="text-lg font-bold text-indigo-300 ml-2">({{ gradeScore.scorePercent }}점 / 100점)</span>
+                            </h3>
+                        </div>
+                    </div>
+
+                    <!-- Quick OMR Summary Chips -->
+                    <div class="flex items-center space-x-2 overflow-x-auto py-1">
+                        <div 
+                            v-for="q in examQuestions" 
+                            :key="q.number"
+                            class="px-3 py-2 rounded-xl text-center min-w-[54px] border"
+                            :class="userAnswers[q.number] === getCleanAnswer(q.correct_answer) ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300' : 'bg-rose-500/20 border-rose-400 text-rose-300'"
+                        >
+                            <span class="text-[10px] block font-bold text-slate-300">{{ q.number }}번</span>
+                            <span class="text-xs font-black">
+                                {{ userAnswers[q.number] === getCleanAnswer(q.correct_answer) ? '정답 ✓' : '오답 ✕' }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Collapsible Passage Bar (Optional view) -->
+                <div class="mb-6 bg-white rounded-xl border border-slate-200 p-4 shadow-sm no-print">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-sm">📖</span>
+                            <span class="text-xs font-bold text-slate-800">출제 원문 지문</span>
+                        </div>
+                        <button 
+                            @click="showPassageInExam = !showPassageInExam" 
+                            class="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center space-x-1"
+                        >
+                            <span>{{ showPassageInExam ? '지문 접기 ▲' : '지문 펼쳐보기 ▼' }}</span>
+                        </button>
+                    </div>
+                    <div v-if="showPassageInExam" class="mt-3 p-4 bg-slate-50 rounded-lg text-xs leading-relaxed text-slate-700 font-serif whitespace-pre-wrap border border-slate-200 max-h-60 overflow-y-auto">
+                        {{ parsedData.passage }}
+                    </div>
+                </div>
+
+                <!-- Empty questions recovery card -->
+                <div v-if="examQuestions.length === 0" class="p-8 bg-white rounded-2xl border border-slate-200 shadow-sm text-center">
+                    <p class="text-sm font-bold text-slate-700 mb-3">생성된 문제가 없습니다. 이전 단계에서 다시 시도해주세요.</p>
+                    <button @click="currentStep = 3" class="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow">
+                        출제 화면으로 돌아가기
+                    </button>
+                </div>
+
+                <!-- CSAT Styled Exam Paper (Questions Focused Layout) -->
+                <div v-else class="exam-paper p-8 sm:p-12 rounded-xl border border-slate-300 mb-12">
+                    
+                    <!-- Exam Header -->
+                    <div class="border-b-2 border-slate-900 pb-4 mb-8">
+                        <div class="flex items-center justify-between">
+                            <div class="text-xs font-bold tracking-widest text-slate-700">2026학년도 대학수학능력시험 모의평가 대비</div>
+                            <div class="text-xs font-bold text-slate-500">제 1 교시</div>
+                        </div>
+                        <div class="text-center my-3">
+                            <h2 class="text-2xl sm:text-3xl font-black tracking-tight text-slate-950">국어 영역 (독서·문학)</h2>
+                        </div>
+                        <div class="flex items-center justify-between text-xs font-bold text-slate-800 pt-2 border-t border-slate-300">
+                            <div class="flex space-x-6">
+                                <span>성명 : ____________________</span>
+                                <span>수험번호 : ____________________</span>
+                            </div>
+                            <div>홀수형</div>
+                        </div>
+                    </div>
+
+                    <!-- Questions Grid Layout (2-Column pure questions) -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-8">
+                        
+                        <div v-for="q in examQuestions" :key="q.number" class="relative bg-white rounded-lg p-3 border transition" 
+                             :class="{
+                                 'opacity-50 pointer-events-none': regeneratingNumber === q.number,
+                                 'border-emerald-300 bg-emerald-50/20': isGraded && userAnswers[q.number] === getCleanAnswer(q.correct_answer),
+                                 'border-rose-300 bg-rose-50/20': isGraded && userAnswers[q.number] !== getCleanAnswer(q.correct_answer),
+                                 'border-slate-100 hover:border-slate-200': !isGraded
+                             }"
+                        >
+                            <!-- Question Title & Status & Regenerate Button -->
+                            <div class="flex items-start justify-between mb-2">
+                                <div class="flex items-baseline space-x-1.5 flex-1 font-serif">
+                                    <span class="font-black text-base text-slate-900">{{ q.number }}.</span>
+                                    <span class="font-bold text-sm text-slate-900 leading-snug">{{ q.question }}</span>
+                                </div>
+                                <div class="no-print ml-2 flex-shrink-0 flex items-center space-x-1.5">
+                                    <span v-if="isGraded" class="text-xs font-bold px-2 py-0.5 rounded" :class="userAnswers[q.number] === getCleanAnswer(q.correct_answer) ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'">
+                                        {{ userAnswers[q.number] === getCleanAnswer(q.correct_answer) ? '정답 ✓' : '오답 ✕' }}
+                                    </span>
+                                    <button 
+                                        @click="regenerateSingle(q.number)" 
+                                        title="이 문항만 다른 유형으로 다시 생성하기"
+                                        class="px-2 py-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg border border-indigo-200 transition flex items-center space-x-1"
+                                        :disabled="regeneratingNumber === q.number"
+                                    >
+                                        <span v-if="regeneratingNumber === q.number" class="animate-spin">🔄</span>
+                                        <span v-else>🔄</span>
+                                        <span class="text-[11px]">재생성</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- [보기] Box -->
+                            <div v-if="q.box_content && q.box_content.trim()" class="my-3 p-3.5 bg-slate-50 border border-slate-400 rounded text-xs font-serif leading-relaxed whitespace-pre-line text-slate-900">
+                                {{ q.box_content }}
+                            </div>
+
+                            <!-- Options ① ~ ⑤ (Interactive Answer Check) -->
+                            <div class="mt-3 space-y-1.5 text-xs font-serif text-slate-900 pl-1">
+                                <div 
+                                    v-for="(opt, idx) in q.options" 
+                                    :key="idx" 
+                                    @click="selectOption(q.number, idx + 1)"
+                                    class="leading-relaxed p-1.5 rounded-lg cursor-pointer select-none transition flex items-start space-x-2 border"
+                                    :class="getOptionClass(q, idx + 1)"
+                                >
+                                    <span class="font-bold flex-shrink-0">{{ getCircledNumber(idx + 1) }}</span>
+                                    <span class="flex-1">{{ stripCircledNumber(opt) }}</span>
+                                    <span v-if="isGraded && getCleanAnswer(q.correct_answer) === (idx + 1)" class="text-xs font-bold text-emerald-600 flex-shrink-0">정답</span>
+                                    <span v-else-if="isGraded && userAnswers[q.number] === (idx + 1)" class="text-xs font-bold text-rose-600 flex-shrink-0">내가 고른 답</span>
+                                </div>
+                            </div>
+
+                            <!-- Answer & Detailed Explanation (Toggled or after grading) -->
+                            <div v-if="showAnswersAll || isGraded" class="mt-4 p-3.5 bg-amber-50/90 border border-amber-200 rounded-lg text-xs font-sans text-amber-950">
+                                <div class="flex items-center justify-between font-bold mb-1.5 text-amber-900">
+                                    <span>💡 정답: <strong class="text-indigo-700 text-sm ml-1">{{ q.correct_answer }}</strong></span>
+                                    <span class="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded font-bold">{{ q.difficulty_label || currentDifficulty }}</span>
+                                </div>
+                                <p class="mt-1 text-xs leading-relaxed">{{ q.explanation }}</p>
+                                <div v-if="q.source_evidence" class="mt-2 pt-2 border-t border-amber-200/60 text-[11px] text-amber-800 leading-relaxed">
+                                    <strong>지문 내 근거:</strong> {{ q.source_evidence }}
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- Answer Key Table at bottom (when enabled or after graded) -->
+                    <div v-if="showAnswersAll || isGraded" class="mt-10 pt-6 border-t-2 border-slate-900">
+                        <h4 class="text-sm font-bold text-slate-900 mb-3">[ 정답 및 OMR 답안표 ]</h4>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full text-center border-collapse border border-slate-400 text-xs font-sans">
+                                <thead>
+                                    <tr class="bg-slate-100">
+                                        <th class="border border-slate-400 py-1.5 px-3">문항 번호</th>
+                                        <th v-for="q in examQuestions" :key="q.number" class="border border-slate-400 py-1.5 px-3 font-bold">{{ q.number }}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-if="isGraded">
+                                        <td class="border border-slate-400 py-1.5 px-3 font-bold bg-slate-50">내 답안</td>
+                                        <td v-for="q in examQuestions" :key="q.number" class="border border-slate-400 py-1.5 px-3 font-bold" :class="userAnswers[q.number] === getCleanAnswer(q.correct_answer) ? 'text-emerald-700 bg-emerald-50' : 'text-rose-700 bg-rose-50'">
+                                            {{ userAnswers[q.number] ? getCircledNumber(userAnswers[q.number]) : '미응시' }}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="border border-slate-400 py-1.5 px-3 font-bold bg-slate-50">정답</td>
+                                        <td v-for="q in examQuestions" :key="q.number" class="border border-slate-400 py-1.5 px-3 font-bold text-indigo-700">{{ q.correct_answer }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </main>
+
+        <!-- Multi-AI Provider & API Key Modal -->
+        <div 
+            v-if="openApiKeyModal" 
+            class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+            <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100">
+                <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                    <div class="flex items-center space-x-2">
+                        <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                            ⚙️
+                        </div>
+                        <div>
+                            <h3 class="text-base font-bold text-slate-900">AI 엔진 및 API 설정</h3>
+                            <p class="text-[11px] text-slate-500">원하시는 AI 제공사를 선택하고 키를 등록하세요.</p>
+                        </div>
+                    </div>
+                    <button @click="openApiKeyModal = false" class="text-slate-400 hover:text-slate-600 font-bold p-1 cursor-pointer">✕</button>
+                </div>
+                
+                <!-- Provider Tab Buttons -->
+                <div class="grid grid-cols-3 gap-2 mb-4">
+                    <button 
+                        v-for="(pConf, pKey) in providers" 
+                        :key="pKey"
+                        @click="switchTab(pKey)"
+                        class="p-2.5 rounded-xl border text-xs font-bold transition flex flex-col items-center justify-center space-y-1 cursor-pointer"
+                        :class="activeTabProvider === pKey ? 'border-indigo-600 bg-indigo-50 text-indigo-700 ring-2 ring-indigo-100' : 'border-slate-200 text-slate-600 hover:bg-slate-50'"
+                    >
+                        <span>{{ getProviderTabLabel(pKey) }}</span>
+                    </button>
+                </div>
+
+                <!-- Active Provider Config Details -->
+                <div v-if="currentTabConfig" class="space-y-4 mb-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-extrabold text-slate-800">{{ currentTabConfig.name }}</span>
+                        <a :href="currentTabConfig.key_url" target="_blank" class="text-[11px] text-indigo-600 hover:underline flex items-center font-bold">
+                            🔑 API 키 발급받기
+                        </a>
+                    </div>
+
+                    <div>
+                        <label class="text-xs font-bold text-slate-700 block mb-1">API 키 입력</label>
+                        <input 
+                            type="password" 
+                            v-model="providerKeys[activeTabProvider]" 
+                            @input="onKeyInput"
+                            placeholder="csk_... 또는 gsk_... 또는 sk-..." 
+                            class="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                        >
+                    </div>
+
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="text-xs font-bold text-slate-700">세부 모델 선택</label>
+                            <span v-if="isLoadingModels" class="text-[10px] text-indigo-600">
+                                🔄 모델 목록 동기화 중...
+                            </span>
+                        </div>
+                        <select 
+                            v-model="providerModels[activeTabProvider]" 
+                            class="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                        >
+                            <option v-for="m in activeTabModels" :key="m.id" :value="m.id">
+                                {{ m.name || m.id }}
+                            </option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-end space-x-2">
+                    <button @click="openApiKeyModal = false" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer">
+                        닫기
+                    </button>
+                    <button @click="saveProviderSettings" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-100 cursor-pointer">
+                        이 AI 엔진으로 설정 완료
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Vue App Script -->
+    <script>
+        const safeStorage = {
+            get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+            set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
+            remove: (k) => { try { localStorage.removeItem(k); } catch (e) {} }
+        };
+
+        const { createApp, ref, reactive, computed, onMounted } = Vue;
+
+        const app = createApp({
+            setup() {
+
+                const currentStep = ref(1);
+                const isDragging = ref(false);
+                const isAnalyzing = ref(false);
+                const isGenerating = ref(false);
+                const regeneratingNumber = ref(null);
+                const errorMessage = ref('');
+                const openApiKeyModal = ref(false);
+                const isLoadingModels = ref(false);
+                const showPassageInExam = ref(false);
+                
+                const defaultProviders = {
+                    cerebras: {
+                        name: "Cerebras (세레브라스 - 초당 2,000+ 토큰 세계 최고속)",
+                        default_model: "llama-3.3-70b",
+                        models: [
+                            { id: "llama-3.3-70b", name: "Llama 3.3 70B (추천, 극초고속 플래그십)" },
+                            { id: "llama3.1-70b", name: "Llama 3.1 70B (초고속 고성능)" },
+                            { id: "llama3.1-8b", name: "Llama 3.1 8B (초경량 순간 응답)" }
+                        ],
+                        key_url: "https://cloud.cerebras.ai/"
+                    },
+                    groq: {
+                        name: "Groq (초고속 / 무료 티어 지원)",
+                        default_model: "llama-3.1-8b-instant",
+                        models: [
+                            { id: "llama-3.1-8b-instant", name: "Llama 3.1 8B Instant (공식 표준 권장 / 초고속)" },
+                            { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B Versatile (최신 대형 플래그십)" },
+                            { id: "llama-3.1-70b-versatile", name: "Llama 3.1 70B Versatile (고성능)" },
+                            { id: "deepseek-r1-distill-llama-70b", name: "DeepSeek R1 Distill Llama 70B (수능 킬러/심층 추론)" }
+                        ],
+                        key_url: "https://console.groq.com/keys"
+                    },
+                    deepseek: {
+                        name: "DeepSeek (딥시크 - 수능 고난도 추론)",
+                        default_model: "deepseek-chat",
+                        models: [
+                            { id: "deepseek-chat", name: "DeepSeek V3 (지문 정밀 분석 & 수능 표준 출제)" },
+                            { id: "deepseek-reasoner", name: "DeepSeek R1 (수능 킬러문항 심층 추론)" }
+                        ],
+                        key_url: "https://platform.deepseek.com/api_keys"
+                    },
+                    solar: {
+                        name: "Upstage Solar (업스테이지 솔라 - 한국어 특화)",
+                        default_model: "solar-pro",
+                        models: [
+                            { id: "solar-pro", name: "Solar Pro (최신 한국어 플래그십)" },
+                            { id: "solar-mini", name: "Solar Mini (경량화 고속 모델)" }
+                        ],
+                        key_url: "https://console.upstage.ai/"
+                    },
+                    openai: {
+                        name: "OpenAI (GPT-4o / o1)",
+                        default_model: "gpt-4o-mini",
+                        models: [
+                            { id: "gpt-4o-mini", name: "GPT-4o Mini (경제적 고성능)" },
+                            { id: "gpt-4o", name: "GPT-4o (최고 성능 플래그십)" }
+                        ],
+                        key_url: "https://platform.openai.com/api-keys"
+                    },
+                    gemini: {
+                        name: "Google Gemini",
+                        default_model: "gemini-2.0-flash",
+                        models: [
+                            { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash (초고속 멀티모달)" },
+                            { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro (초장문 심층 독해)" }
+                        ],
+                        key_url: "https://aistudio.google.com/app/apikey"
+                    }
+                };
+
+                // Multi Provider State
+                const providers = ref(defaultProviders);
+                const dynamicModels = reactive({});
+                const selectedProvider = ref('cerebras');
+                const activeTabProvider = ref('cerebras');
+                const providerKeys = reactive({
+                    cerebras: '',
+                    groq: '',
+                    deepseek: '',
+                    solar: '',
+                    openai: '',
+                    gemini: ''
+                });
+                const providerModels = reactive({
+                    cerebras: 'llama-3.3-70b',
+                    groq: 'llama-3.1-8b-instant',
+                    deepseek: 'deepseek-chat',
+                    solar: 'solar-pro',
+                    openai: 'gpt-4o-mini',
+                    gemini: 'gemini-2.0-flash'
+                });
+                const hasApiKey = ref(false);
+                const pageRangeInput = ref('');
+
+                // Subject Selection State
+                const selectedSubject = ref('korean');
+
+                // Step 2 State
+                const step2Tab = ref('edit');
+                const originalPassageBackup = ref('');
+                const showPassagePreview = ref(false);
+                const isSummaryConfirmed = ref(false);
+                const selectedTemplate = ref('수능 종합 모의고사형 (다양한 유형)');
+
+                // Step 3 State
+                const difficulty = ref('극악 킬러 (만점 방지용)');
+                const questionCount = ref(3);
+
+                // Step 4 State
+                const showAnswersAll = ref(false);
+                const currentDifficulty = ref('극악 킬러 (만점 방지용)');
+                const examQuestions = ref([]);
+                const userAnswers = reactive({});
+                const isGraded = ref(false);
+                const gradeScore = reactive({
+                    correctCount: 0,
+                    totalCount: 0,
+                    scorePercent: 0
+                });
+
+                const getProviderTabLabel = (pKey) => {
+                    const map = {
+                        cerebras: '🚀 Cerebras (초고속)',
+                        groq: '⚡ Groq',
+                        deepseek: '🧠 DeepSeek',
+                        solar: '☀️ Solar',
+                        openai: '🤖 OpenAI',
+                        gemini: '💎 Gemini'
+                    };
+                    return map[pKey] || pKey;
+                };
+
+                // Parsed Data
+                const parsedData = ref({
+                    filename: '',
+                    format: '',
+                    page_info: '',
+                    summary: '',
+                    passage: '',
+                    detected_style: {
+                        has_question_style: false,
+                        template_name: '수능 종합 모의고사형 (다양한 유형)',
+                        description: '일치/불일치, 보기 적용, 빈칸 추론, 비판적 평가 복합 구성'
+                    }
+                });
+
+                const steps = [
+                    { step: 1, title: '파일 업로드' },
+                    { step: 2, title: '요약 컨펌 & 지문 수정' },
+                    { step: 3, title: '출제 난이도 설정' },
+                    { step: 4, title: '시험지 & 채점' }
+                ];
+
+                // Korean CSAT Question Template Presets
+                const templatePresets = [
+                    { id: 'mixed', name: '수능 종합 모의고사형 (다양한 유형)', desc: '사실적 독해, <보기> 심층 적용, 빈칸/어휘, 비판적 평가 복합 구성' },
+                    { id: 'box', name: '<보기> 박스 사례/학설 적용 집중형', desc: '<보기>에 새로운 가상 상황이나 데이터를 제시하고 분석하는 고난도형' },
+                    { id: 'blank', name: '빈칸 추론 / 함축 의미 추론형', desc: '지문 내 핵심 개념 빈칸 및 문맥적 함축 의미 추론' },
+                    { id: 'critic', name: '비판적 평가 및 반론 제기형', desc: '필자의 숨겨진 전제 도출 및 타당성 비판/반론' }
+                ];
+
+                // Korean CSAT Sample Presets
+                const samplePresets = [
+                    { id: 'korean_shilhak', title: '📖 국어 비문학: 북학파 실학', desc: '조선 후기 실학파의 유통경제론과 북학파의 상업관 분석' },
+                    { id: 'korean_ai_bias', title: '🌍 인공지능 윤리와 인지 편향', desc: '인공지능의 윤리적 의사결정과 인간의 인지 편향에 관한 학술 연구' },
+                    { id: 'korean_dna', title: '🔬 분자생물학: DNA 복제와 전사', desc: 'DNA 복제와 전사 과정에서의 효소 상호작용 메커니즘' }
+                ];
+
+                onMounted(async () => {
+                    try {
+                        const res = await fetch('/api/providers');
+                        const data = await res.json();
+                        providers.value = data.providers;
+                        
+                        const savedProvider = safeStorage.get('AI_PROVIDER') || data.default_provider || 'cerebras';
+                        selectedProvider.value = savedProvider;
+                        activeTabProvider.value = savedProvider;
+
+                        for (let p in providers.value) {
+                            const k = safeStorage.get(`KEY_${p}`);
+                            if (k) providerKeys[p] = k;
+                            const m = safeStorage.get(`MODEL_${p}`);
+                            if (m) providerModels[p] = m;
+                        }
+                    } catch (e) {
+                        console.error(e);
+                    }
+
+                    await checkCurrentKeyStatus();
+                });
+
+                const currentTabConfig = computed(() => {
+                    return providers.value[activeTabProvider.value] || null;
+                });
+
+                const activeTabModels = computed(() => {
+                    const p = activeTabProvider.value;
+                    if (dynamicModels[p] && dynamicModels[p].length > 0) {
+                        return dynamicModels[p];
+                    }
+                    const conf = providers.value[p];
+                    return conf ? conf.models : [];
+                });
+
+                const currentProviderName = computed(() => {
+                    const p = selectedProvider.value;
+                    if (p === 'cerebras') return 'Cerebras';
+                    if (p === 'groq') return 'Groq';
+                    if (p === 'deepseek') return 'DeepSeek';
+                    if (p === 'solar') return 'Solar';
+                    if (p === 'openai') return 'OpenAI';
+                    if (p === 'gemini') return 'Gemini';
+                    return p;
+                });
+
+                const currentModelId = computed(() => {
+                    return providerModels[selectedProvider.value] || '';
+                });
+
+                const setDifficulty = (val) => {
+                    difficulty.value = val;
+                };
+
+                const openSettingsModal = () => {
+                    openApiKeyModal.value = true;
+                    switchTab(selectedProvider.value);
+                };
+
+                const switchTab = (pKey) => {
+                    activeTabProvider.value = pKey;
+                    fetchLiveModelsForTab(pKey);
+                };
+
+                const fetchLiveModelsForTab = async (pKey) => {
+                    const key = providerKeys[pKey];
+                    if (!key) return;
+                    isLoadingModels.value = true;
+                    try {
+                        const res = await fetch('/api/fetch-live-models', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ provider: pKey, api_key: key })
+                        });
+                        const data = await res.json();
+                        if (data.success && data.models && data.models.length > 0) {
+                            dynamicModels[pKey] = data.models;
+                            if (!data.models.some(m => m.id === providerModels[pKey])) {
+                                providerModels[pKey] = data.models[0].id;
+                            }
+                        }
+                    } catch (e) {
+                        console.warn(e);
+                    } finally {
+                        isLoadingModels.value = false;
+                    }
+                };
+
+                const onKeyInput = () => {
+                    fetchLiveModelsForTab(activeTabProvider.value);
+                };
+
+                const checkCurrentKeyStatus = async () => {
+                    const p = selectedProvider.value;
+                    const key = providerKeys[p];
+                    try {
+                        const res = await fetch('/api/check-api-key', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ provider: p, api_key: key })
+                        });
+                        const data = await res.json();
+                        hasApiKey.value = data.has_key;
+                    } catch (e) {
+                        hasApiKey.value = Boolean(key);
+                    }
+                };
+
+                const saveProviderSettings = async () => {
+                    selectedProvider.value = activeTabProvider.value;
+                    safeStorage.set('AI_PROVIDER', selectedProvider.value);
+
+                    for (let p in providerKeys) {
+                        if (providerKeys[p]) {
+                            safeStorage.set(`KEY_${p}`, providerKeys[p].trim());
+                        } else {
+                            safeStorage.remove(`KEY_${p}`);
+                        }
+                        if (providerModels[p]) {
+                            safeStorage.set(`MODEL_${p}`, providerModels[p]);
+                        }
+                    }
+
+                    await checkCurrentKeyStatus();
+                    openApiKeyModal.value = false;
+                };
+
+                const canNavigateTo = (target) => {
+                    if (target === 1) return true;
+                    if (target === 2) return Boolean(parsedData.value.passage);
+                    if (target === 3) return isSummaryConfirmed.value;
+                    if (target === 4) return examQuestions.value.length > 0;
+                    return false;
+                };
+
+                const resetToStep = (step) => {
+                    currentStep.value = step;
+                };
+
+                const handleFileSelect = (e) => {
+                    const files = e.target.files;
+                    if (files && files.length > 0) {
+                        uploadFile(files[0]);
+                    }
+                };
+
+                const handleDrop = (e) => {
+                    isDragging.value = false;
+                    const files = e.dataTransfer.files;
+                    if (files && files.length > 0) {
+                        uploadFile(files[0]);
+                    }
+                };
+
+                const uploadFile = async (file) => {
+                    const p = selectedProvider.value;
+                    const key = providerKeys[p];
+                    if (!hasApiKey.value && !key) {
+                        openApiKeyModal.value = true;
+                        errorMessage.value = `${currentProviderName.value} API 키를 먼저 입력해주세요.`;
+                        return;
+                    }
+
+                    isAnalyzing.value = true;
+                    errorMessage.value = '';
+
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('provider', p);
+                    if (providerModels[p]) {
+                        formData.append('model', providerModels[p]);
+                    }
+                    if (key) {
+                        formData.append('api_key', key);
+                    }
+                    if (pageRangeInput.value.trim()) {
+                        formData.append('page_range', pageRangeInput.value.trim());
+                    }
+
+                    try {
+                        const res = await fetch('/api/upload-and-analyze', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const data = await res.json();
+
+                        if (!data.success) {
+                            throw new Error(data.error || '문서 분석에 실패했습니다.');
+                        }
+
+                        parsedData.value = data;
+                        originalPassageBackup.value = data.passage || '';
+                        step2Tab.value = 'edit';
+                        if (data.detected_style && data.detected_style.has_question_style) {
+                            selectedTemplate.value = data.detected_style.template_name;
+                        }
+                        isSummaryConfirmed.value = false;
+                        currentStep.value = 2;
+                    } catch (err) {
+                        errorMessage.value = err.message;
+                    } finally {
+                        isAnalyzing.value = false;
+                    }
+                };
+
+                const loadSample = async (sampleId) => {
+                    const p = selectedProvider.value;
+                    const key = providerKeys[p];
+                    if (!hasApiKey.value && !key) {
+                        openApiKeyModal.value = true;
+                        errorMessage.value = `${currentProviderName.value} API 키를 먼저 입력해주세요.`;
+                        return;
+                    }
+
+                    const sampleDatabase = {
+                        // 국어 영역 비문학·문학 샘플
+                        korean_shilhak: `조선 후기 북학파 실학자 박제가와 박지원은 유통 경제의 활성화와 통상 무역의 확대를 강력히 주장하였다. 당시 조선 사회는 농본주의적 사고관에 갇혀 상업과 유통을 억제하였으나, 박제가는 '우물론'을 통해 소비가 생산을 촉진하며 재물이 순환되지 않으면 사회 전체가 빈곤해진다는 혁신적 경제관을 역설하였다. 그는 수레와 선박의 적극적인 개발과 도로 정비를 통해 물자 유통 속도를 획기적으로 개선해야 한다고 보았다. 또한 청나라와의 적극적인 무역을 통하여 선진 문물과 기술을 수용하고 백성들의 삶을 풍요롭게 해야 한다고 주장하였다. 이러한 북학파의 견해는 단순한 경제 이론을 넘어 신분제적 제약을 극복하고 실용적인 국가 발전을 도모하려 한 사회 개혁론의 성격을 지닌다.`,
+                        korean_ai_bias: `인공지능의 의사결정 알고리즘은 통계적 객관성을 표방하지만, 훈련 데이터에 내재된 역사적·인간적 편향을 그대로 학습하고 증폭시키는 구조적 한계를 지닌다. 딥러닝 신경망의 '블랙박스(Black-box)' 특성으로 인해 의사결정의 인과관계 추적이 어려우며, 사법 판결이나 의료 진단 등 공공성이 높은 영역에서 설명 가능성(Explainability)의 결여는 심각한 윤리적 딜레마를 낳는다. 따라서 인간의 도덕적 분별력과 알고리즘의 연산 속도를 결합한 '인간 참여형(Human-in-the-loop)' 하이브리드 거버넌스 체계 구축이 필수적이다.`,
+                        korean_dna: `세포 내에서 유전 정보의 발현은 DNA에서 RNA로 전사되고, 다시 단백질로 번역되는 중심원리(Central Dogma)를 따른다. DNA 복제 과정에서는 DNA 헬리케이스가 이중 나선을 풀고, DNA 중합효소가 프라이머의 3' 말단에 상보적인 디옥시리보뉴클레오타이드를 결합시키며 5'에서 3' 방향으로 연속적인 선도 가닥과 불연속적인 지연 가닥(오카자키 절편)을 형성한다. 반면 전사 과정에서는 RNA 중합효소가 프로모터에 결합하여 단일 가닥의 mRNA를 합성하며, 티민(T) 대신 유라실(U)이 아데닌(A)과 상보 결합한다. 이러한 효소들의 정교한 교정(Proofreading) 기능은 유전적 돌연변이 발생률을 극히 낮은 수준으로 유지시키는 핵심 기전이다.`
+                    };
+
+                    isAnalyzing.value = true;
+                    errorMessage.value = '';
+
+                    const text = sampleDatabase[sampleId] || sampleDatabase['korean_shilhak'];
+
+                    const formData = new FormData();
+                    formData.append('raw_text', text);
+                    formData.append('provider', p);
+                    if (providerModels[p]) {
+                        formData.append('model', providerModels[p]);
+                    }
+                    if (key) {
+                        formData.append('api_key', key);
+                    }
+
+                    try {
+                        const res = await fetch('/api/upload-and-analyze', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const data = await res.json();
+                        if (!data.success) throw new Error(data.error);
+
+                        parsedData.value = data;
+                        parsedData.value.filename = `수능_국어_샘플_${sampleId}.txt`;
+                        originalPassageBackup.value = data.passage || '';
+                        step2Tab.value = 'edit';
+                        isSummaryConfirmed.value = false;
+                        currentStep.value = 2;
+                    } catch (err) {
+                        errorMessage.value = err.message;
+                    } finally {
+                        isAnalyzing.value = false;
+                    }
+                };
+
+                const goToStep3 = () => {
+                    if (!isSummaryConfirmed.value || !parsedData.value.passage) return;
+                    currentStep.value = 3;
+                };
+
+                const startGeneratingQuestions = async () => {
+                    isGenerating.value = true;
+                    errorMessage.value = '';
+
+                    const p = selectedProvider.value;
+                    const key = providerKeys[p];
+
+                    // Reset answer states
+                    for (let k in userAnswers) {
+                        delete userAnswers[k];
+                    }
+                    isGraded.value = false;
+                    showAnswersAll.value = false;
+
+                    try {
+                        const res = await fetch('/api/generate-questions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                passage: parsedData.value.passage,
+                                question_style: selectedTemplate.value,
+                                difficulty: difficulty.value,
+                                question_count: Math.max(1, Math.min(20, questionCount.value || 3)),
+                                subject: 'korean',
+                                provider: p,
+                                model: providerModels[p],
+                                api_key: key
+                            })
+                        });
+
+                        const data = await res.json();
+                        if (!data.success) throw new Error(data.error || '문제 생성에 실패했습니다.');
+
+                        if (!data.questions || data.questions.length === 0) {
+                            throw new Error('AI가 문제를 반환하지 못했습니다. 다시 시도해주세요.');
+                        }
+
+                        examQuestions.value = data.questions;
+                        currentDifficulty.value = data.difficulty;
+                        currentStep.value = 4;
+                    } catch (err) {
+                        errorMessage.value = err.message;
+                    } finally {
+                        isGenerating.value = false;
+                    }
+                };
+
+                const regenerateSingle = async (targetNumber) => {
+                    regeneratingNumber.value = targetNumber;
+                    errorMessage.value = '';
+
+                    const p = selectedProvider.value;
+                    const key = providerKeys[p];
+
+                    try {
+                        const res = await fetch('/api/regenerate-question', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                passage: parsedData.value.passage,
+                                question_style: selectedTemplate.value,
+                                difficulty: currentDifficulty.value,
+                                existing_questions: examQuestions.value,
+                                target_number: targetNumber,
+                                subject: 'korean',
+                                provider: p,
+                                model: providerModels[p],
+                                api_key: key
+                            })
+                        });
+
+                        const data = await res.json();
+                        if (!data.success) throw new Error(data.error || '문항 재생성에 실패했습니다.');
+
+                        const idx = examQuestions.value.findIndex(q => q.number === targetNumber);
+                        if (idx !== -1) {
+                            examQuestions.value[idx] = data.question;
+                            delete userAnswers[targetNumber];
+                            if (isGraded.value) {
+                                gradeExam();
+                            }
+                        }
+                    } catch (err) {
+                        errorMessage.value = err.message;
+                    } finally {
+                        regeneratingNumber.value = null;
+                    }
+                };
+
+                // Interactive Answering & OMR Grading
+                const getCircledNumber = (num) => {
+                    const circled = ['\u2460', '\u2461', '\u2462', '\u2463', '\u2464'];
+                    return circled[num - 1] || String(num);
+                };
+
+                const stripCircledNumber = (optText) => {
+                    if (!optText) return '';
+                    let text = String(optText).trim();
+                    const circledSymbols = ['\u2460', '\u2461', '\u2462', '\u2463', '\u2464', '1', '2', '3', '4', '5'];
+                    for (let s of circledSymbols) {
+                        if (text.startsWith(s)) {
+                            text = text.substring(s.length).trim();
+                            if (text.startsWith('.') || text.startsWith(')')) {
+                                text = text.substring(1).trim();
+                            }
+                            break;
+                        }
+                    }
+                    return text;
+                };
+
+                const getCleanAnswer = (ans) => {
+                    if (ans === undefined || ans === null) return 0;
+                    const str = String(ans).trim();
+                    if (str.includes('\u2460') || str.includes('1')) return 1;
+                    if (str.includes('\u2461') || str.includes('2')) return 2;
+                    if (str.includes('\u2462') || str.includes('3')) return 3;
+                    if (str.includes('\u2463') || str.includes('4')) return 4;
+                    if (str.includes('\u2464') || str.includes('5')) return 5;
+                    return parseInt(str, 10) || 0;
+                };
+
+                const selectOption = (qNumber, optNum) => {
+                    if (isGraded.value) return; // Locked when graded
+                    userAnswers[qNumber] = optNum;
+                };
+
+                const getOptionClass = (q, optNum) => {
+                    const isSelected = userAnswers[q.number] === optNum;
+                    const correctNum = getCleanAnswer(q.correct_answer);
+
+                    if (!isGraded.value) {
+                        if (isSelected) {
+                            return 'border-indigo-600 bg-indigo-50 text-indigo-900 font-bold ring-2 ring-indigo-200';
+                        }
+                        return 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-800';
+                    }
+
+                    // Graded Mode
+                    if (optNum === correctNum) {
+                        return 'border-emerald-500 bg-emerald-100/90 text-emerald-950 font-bold ring-2 ring-emerald-300';
+                    }
+                    if (isSelected && optNum !== correctNum) {
+                        return 'border-rose-400 bg-rose-100/90 text-rose-950 font-semibold line-through decoration-rose-600';
+                    }
+                    return 'border-slate-100 opacity-60 text-slate-600';
+                };
+
+                const gradeExam = () => {
+                    let correct = 0;
+                    const total = examQuestions.value.length;
+
+                    examQuestions.value.forEach(q => {
+                        const userAns = userAnswers[q.number];
+                        const correctAns = getCleanAnswer(q.correct_answer);
+                        if (userAns && userAns === correctAns) {
+                            correct++;
+                        }
+                    });
+
+                    gradeScore.correctCount = correct;
+                    gradeScore.totalCount = total;
+                    gradeScore.scorePercent = total > 0 ? Math.round((correct / total) * 100) : 0;
+                    isGraded.value = true;
+                };
+
+                const resetGrading = () => {
+                    for (let k in userAnswers) {
+                        delete userAnswers[k];
+                    }
+                    isGraded.value = false;
+                    showAnswersAll.value = false;
+                };
+
+                const printExam = () => {
+                    window.print();
+                };
+
+                return {
+                    currentStep,
+                    steps,
+                    samplePresets,
+                    isDragging,
+                    isAnalyzing,
+                    isGenerating,
+                    regeneratingNumber,
+                    errorMessage,
+                    openApiKeyModal,
+                    isLoadingModels,
+                    showPassageInExam,
+                    providers,
+                    selectedProvider,
+                    activeTabProvider,
+                    providerKeys,
+                    providerModels,
+                    currentTabConfig,
+                    activeTabModels,
+                    currentProviderName,
+                    currentModelId,
+                    hasApiKey,
+                    pageRangeInput,
+                    showPassagePreview,
+                    isSummaryConfirmed,
+                    selectedTemplate,
+                    templatePresets,
+                    step2Tab,
+                    originalPassageBackup,
+                    difficulty,
+                    questionCount,
+                    showAnswersAll,
+                    currentDifficulty,
+                    examQuestions,
+                    parsedData,
+                    userAnswers,
+                    isGraded,
+                    gradeScore,
+                    setDifficulty,
+                    openSettingsModal,
+                    switchTab,
+                    onKeyInput,
+                    saveProviderSettings,
+                    canNavigateTo,
+                    resetToStep,
+                    handleFileSelect,
+                    handleDrop,
+                    loadSample,
+                    goToStep3,
+                    startGeneratingQuestions,
+                    regenerateSingle,
+                    getCircledNumber,
+                    stripCircledNumber,
+                    getCleanAnswer,
+                    selectOption,
+                    getOptionClass,
+                    gradeExam,
+                    resetGrading,
+                    getProviderTabLabel,
+                    printExam
+                };
+            }
+        });
+
+        try {
+            app.mount('#app');
+            console.log('AI Exam Studio Vue App successfully mounted!');
+        } catch (err) {
+            console.error('Failed to mount Vue app:', err);
+            const errDiv = document.createElement('div');
+            errDiv.style = 'position:fixed;top:0;left:0;right:0;background:#ef4444;color:white;padding:16px;z-index:9999;font-weight:bold;text-align:center;';
+            errDiv.textContent = '앱 초기화 중 오류가 발생했습니다: ' + err.message;
+            document.body.appendChild(errDiv);
+        }
+    </script>
+</body>
+</html>
