@@ -89,7 +89,9 @@ def extract_content_from_file(
         "page_info": ""
     }
 
-    if ext == ".pdf":
+    if ext in [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"]:
+        raise ValueError("이미지 파일(.png, .jpg 등)은 지원되지 않습니다. 텍스트 문서(PDF, HWP, HWPX, DOCX, PPTX, TXT)를 업로드해주세요.")
+    elif ext == ".pdf":
         result["text"], result["images"], result["page_info"] = parse_pdf(file_path, page_range)
     elif ext == ".docx":
         result["text"], result["page_info"] = parse_docx(file_path, page_range)
@@ -99,10 +101,6 @@ def extract_content_from_file(
         result["text"], result["page_info"] = parse_hwpx(file_path, page_range)
     elif ext == ".hwp":
         result["text"], result["page_info"] = parse_hwp(file_path, page_range)
-    elif ext in [".png", ".jpg", ".jpeg", ".webp"]:
-        result["images"] = parse_image(file_path, ext)
-        result["text"] = f"[이미지 파일: {filename}]"
-        result["page_info"] = "단일 이미지 (1페이지)"
     elif ext in [".txt", ".md", ".csv", ".json"]:
         result["text"] = parse_plain_text(file_path)
         result["page_info"] = "텍스트 문서"

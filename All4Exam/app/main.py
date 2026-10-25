@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from fastapi.staticfiles import StaticFiles
 
-from app.config import PROVIDER_CONFIGS, DEFAULT_PROVIDER, GROQ_DEPRECATED_MODELS, get_api_key
+from app.config import PROVIDER_CONFIGS, DEFAULT_PROVIDER, get_api_key
 from app.services.parser import extract_content_from_file
 from app.services.generator import (
     analyze_document_content,
@@ -84,8 +84,7 @@ async def fetch_live_models(req: LiveModelRequest):
     if not api_key:
         return {"success": False, "models": conf.get("models", [])}
 
-    # If provider is OpenAI-compatible (Cerebras, Groq, OpenAI, Solar, DeepSeek)
-    if provider in ["cerebras", "groq", "openai", "solar", "deepseek"] and OpenAI:
+    if OpenAI:
         try:
             base_url = conf.get("base_url")
             client_args = {"api_key": api_key}
@@ -98,8 +97,6 @@ async def fetch_live_models(req: LiveModelRequest):
             live_models = []
             for m in models_res.data:
                 mid = m.id
-                if mid in GROQ_DEPRECATED_MODELS:
-                    continue
                 # exclude audio/embedding/guard models
                 if "whisper" not in mid and "embed" not in mid and "tts" not in mid and "guard" not in mid:
                     live_models.append({"id": mid, "name": mid})

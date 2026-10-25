@@ -119,7 +119,7 @@ def call_llm(
             if eg not in candidate_models:
                 candidate_models.append(eg)
     elif provider == "cerebras":
-        extra_cerebras = ["llama-3.3-70b", "llama3.1-70b", "llama3.1-8b"]
+        extra_cerebras = ["gpt-oss-120b", "qwen-3.8-27b"]
         for ec in extra_cerebras:
             if ec not in candidate_models:
                 candidate_models.append(ec)
@@ -189,7 +189,7 @@ def analyze_document_content(
   "passage": "정리된 지문 본문 내용...",
   "detected_style": {{
     "has_question_style": false,
-    "template_name": "수능 종합 모의고사형 (다양한 유형 복합)",
+    "template_name": "수능 종합 모의고사형 (다양한 유형)",
     "description": "일치/불일치, 보기 적용, 빈칸 추론, 비판적 평가 복합 구성",
     "sample_format": "수능 표준 양식"
   }}
@@ -284,6 +284,13 @@ def generate_exam_questions(
 {diff_desc}
 
 {f"[이전 문항 목록 (중복 출제 방지)]\\n{prior_context}\\n" if prior_context else ""}
+
+[⚠️ 선지 길이 및 매력도 균형 원칙 (매우 중요)]
+1. **정답 선지와 오답 선지의 길이를 반드시 비슷하고 균등하게 맞추세요.**
+   - 정답 선지만 설명이 길어지거나 단서가 많아지는 현상(길이 힌트)을 엄격히 금지합니다.
+   - ①번부터 ⑤번까지 모든 선지의 글자 수(어절 수)와 문장 구조를 거의 대등하게 유지하세요.
+   - 오답 선지도 정답 선지와 동일한 수준의 학술적 어휘, 복합 문장 구조, 논리적 서술 길이를 가져야 합니다.
+2. 5개 선지(①~⑤)의 번호 기호 뒤에 선지 본문만 작성하세요.
 
 [지문 본문]
 {passage}
@@ -406,6 +413,7 @@ def regenerate_single_question(
 2. 기존 다른 문제들과 측정하는 영역 및 발문 형식이 겹치지 않는 신선한 문항을 만드세요.
 3. 각 오답 선지는 인과관계 전도나 전제 비약 등 매력적인 함정을 갖추어야 합니다.
 4. 문항 번호는 반드시 **{target_number}** 로 지정하세요.
+5. **정답 선지와 오답 선지의 길이를 반드시 비슷하고 균등하게 맞추세요.** 정답 선지만 설명이 길어지는 현상을 방지하고, 5개 선지 모두 글자 수와 문장 구조를 대등하게 유지하세요.
 
 [지문 본문]
 {passage}

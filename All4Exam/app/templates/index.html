@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>All 4 Exam | AI 수능 국어 문제 생성기</title>
+    <title>All 4 Exam | 시험을 위한 모든 것</title>
     <!-- Tailwind CSS -->
     <script src="/static/tailwind.js"></script>
     <script>
@@ -74,12 +74,14 @@
         <header class="bg-white border-b border-slate-200 sticky top-0 z-40 no-print">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
                 <div class="flex items-center space-x-3 cursor-pointer" @click="resetToStep(1)">
-                    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-md shadow-indigo-100 font-black text-lg">
-                        ✦
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-md shadow-indigo-100">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/>
+                        </svg>
                     </div>
                     <div>
                         <h1 class="text-lg font-bold text-slate-900 leading-tight">All 4 Exam</h1>
-                        <p class="text-xs text-slate-500 font-medium">Cerebras · Groq · DeepSeek · Solar · OpenAI</p>
+                        <p class="text-xs text-slate-500 font-medium">시험을 위한 모든 것</p>
                     </div>
                 </div>
 
@@ -167,7 +169,7 @@
                     </div>
                     <h2 class="text-2xl sm:text-3xl font-bold text-slate-900">학습 자료 및 시험 원본 파일 업로드</h2>
                     <p class="mt-2 text-sm text-slate-600">
-                        PDF, 한글(HWP/HWPX), Word, PPT, 이미지를 업로드하면 <span class="font-bold text-indigo-600">{{ currentProviderName }}</span> AI가 지문과 핵심 자료를 추출합니다.
+                        PDF, 한글(HWP/HWPX), Word(DOCX), 텍스트(TXT)를 업로드하면 <span class="font-bold text-indigo-600">{{ currentProviderName }}</span> AI가 지문과 핵심 자료를 추출합니다.
                     </p>
                 </div>
 
@@ -176,7 +178,7 @@
                     <div class="flex items-center justify-between mb-2">
                         <label class="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
                             <span>📑</span>
-                            <span>추출할 페이지 / 슬라이드 범위 지정 (선택사항)</span>
+                            <span>추출할 페이지 범위 지정 (선택사항)</span>
                         </label>
                         <span class="text-[11px] text-slate-400">비워두면 파일 전체를 추출합니다</span>
                     </div>
@@ -208,14 +210,16 @@
                     class="border-2 border-dashed rounded-2xl p-10 text-center transition bg-white"
                     :class="isDragging ? 'border-indigo-500 bg-indigo-50/50 scale-[1.01]' : 'border-slate-300 hover:border-indigo-400'"
                 >
-                    <input type="file" ref="fileInput" @change="handleFileSelect" class="hidden" accept=".pdf,.docx,.pptx,.hwpx,.hwp,.png,.jpg,.jpeg,.txt">
+                    <input type="file" ref="fileInput" @change="handleFileSelect" class="hidden" accept=".pdf,.docx,.hwpx,.hwp,.txt">
                     
-                    <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-3xl">
-                        {{ currentSubjectIcon }}
+                    <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-inner">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
                     </div>
 
                     <h3 class="text-base font-bold text-slate-900 mb-1">파일을 마우스로 끌어다 놓거나 클릭하여 선택하세요</h3>
-                    <p class="text-xs text-slate-500 mb-4">지원 형식: PDF, HWP, HWPX, DOCX, PPTX, PNG, JPG, TXT</p>
+                    <p class="text-xs text-slate-500 mb-4">지원 형식: PDF, HWP, HWPX, DOCX, TXT</p>
 
                     <button 
                         @click="$refs.fileInput.click()" 
@@ -364,33 +368,95 @@
                                 </div>
                             </div>
 
-                            <!-- Detected Style Notice -->
-                            <div v-if="parsedData.detected_style && parsedData.detected_style.has_question_style" class="p-3 bg-indigo-50 border border-indigo-200 rounded-xl mb-4">
+                            <!-- Detected Style Notice (항상 표시) -->
+                            <div v-if="parsedData.detected_style" class="p-3.5 rounded-xl mb-4 border transition-all"
+                                :class="selectedTemplate.includes(parsedData.detected_style.template_name)
+                                    ? 'bg-indigo-50/80 border-indigo-200 ring-1 ring-indigo-200' 
+                                    : 'bg-slate-50 border-slate-200 opacity-75'"
+                            >
                                 <div class="flex items-center justify-between">
-                                    <span class="text-xs font-bold text-indigo-900">
-                                        🏷️ 파일 내 문제 양식 감지됨!
+                                    <span class="text-xs font-bold flex items-center space-x-1" :class="selectedTemplate.includes(parsedData.detected_style.template_name) ? 'text-indigo-900' : 'text-slate-600'">
+                                        <span>{{ parsedData.detected_style.has_question_style ? '🏷️ 파일 내 문제 양식 감지' : '🔍 AI 분석 추천 양식' }}</span>
                                     </span>
-                                    <span class="text-[10px] bg-indigo-200 text-indigo-800 px-2 py-0.5 rounded font-bold">자동 추출</span>
+                                    <div class="flex items-center space-x-1.5">
+                                        <span class="text-[10px] px-2 py-0.5 rounded font-bold"
+                                            :class="parsedData.detected_style.has_question_style ? 'bg-indigo-200 text-indigo-800' : 'bg-slate-200 text-slate-700'"
+                                        >{{ parsedData.detected_style.has_question_style ? '자동 추출' : 'AI 제안' }}</span>
+                                        <span 
+                                            class="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                                            :class="selectedTemplate.includes(parsedData.detected_style.template_name) ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-500'"
+                                        >
+                                            {{ selectedTemplate.includes(parsedData.detected_style.template_name) ? '✓ 적용 중' : '해제됨' }}
+                                        </span>
+                                    </div>
                                 </div>
-                                <p class="text-xs text-indigo-800 mt-1 font-semibold">{{ parsedData.detected_style.template_name }}</p>
-                                <p class="text-[11px] text-indigo-700 mt-0.5">{{ parsedData.detected_style.description }}</p>
+                                <p class="text-xs mt-1.5 font-bold" :class="selectedTemplate.includes(parsedData.detected_style.template_name) ? 'text-indigo-900' : 'text-slate-700'">
+                                    {{ parsedData.detected_style.template_name }}
+                                </p>
+                                <p class="text-[11px] mt-0.5" :class="selectedTemplate.includes(parsedData.detected_style.template_name) ? 'text-indigo-800/80' : 'text-slate-500'">
+                                    {{ parsedData.detected_style.description }}
+                                </p>
                             </div>
 
                             <!-- Template Selector -->
-                            <div class="space-y-2 mb-4">
-                                <label class="text-xs font-bold text-slate-700 block">적용할 문제 양식 선택:</label>
+                            <div class="space-y-2.5 mb-4">
+                                <div class="flex items-center justify-between">
+                                    <label class="text-xs font-bold text-slate-700 block">
+                                        문제 양식 선택
+                                        <span class="font-normal text-slate-400">(중복 선택 가능)</span>
+                                    </label>
+                                    <span class="text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full font-semibold">
+                                        💡 전부 해제 시 AI 제안 자동 선택
+                                    </span>
+                                </div>
                                 <div 
                                     v-for="tpl in templatePresets" 
                                     :key="tpl.id"
-                                    @click="selectedTemplate = tpl.name"
-                                    class="p-3 rounded-xl border transition cursor-pointer text-left"
-                                    :class="selectedTemplate === tpl.name ? 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-slate-300 bg-white'"
+                                    @click="toggleTemplate(tpl.name)"
+                                    class="p-3.5 rounded-xl border-2 transition cursor-pointer text-left select-none relative"
+                                    :class="selectedTemplate.includes(tpl.name) 
+                                        ? 'border-indigo-600 bg-indigo-50/70 shadow-sm ring-2 ring-indigo-200' 
+                                        : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50/50'"
                                 >
-                                    <div class="flex items-center justify-between">
-                                        <span class="text-xs font-bold text-slate-900">{{ tpl.name }}</span>
-                                        <span v-if="selectedTemplate === tpl.name" class="text-indigo-600 font-bold text-xs">●</span>
+                                    <div class="flex items-center justify-between mb-1">
+                                        <div class="flex items-center space-x-2">
+                                            <!-- Checkbox Style Indicator -->
+                                            <div 
+                                                class="w-4 h-4 rounded flex items-center justify-center text-[10px] font-black transition-all"
+                                                :class="selectedTemplate.includes(tpl.name) 
+                                                    ? 'bg-indigo-600 text-white shadow-xs' 
+                                                    : 'border-2 border-slate-300 bg-white text-transparent'"
+                                            >
+                                                ✓
+                                            </div>
+                                            <span 
+                                                class="text-xs font-bold transition-colors"
+                                                :class="selectedTemplate.includes(tpl.name) ? 'text-indigo-950 font-extrabold' : 'text-slate-800'"
+                                            >
+                                                {{ tpl.name }}
+                                            </span>
+                                        </div>
+                                        <div class="flex items-center space-x-1">
+                                            <span 
+                                                v-if="parsedData.detected_style && parsedData.detected_style.template_name === tpl.name" 
+                                                class="text-[10px] font-bold text-indigo-700 bg-indigo-100 border border-indigo-200 px-1.5 py-0.5 rounded-md"
+                                            >
+                                                AI 추천
+                                            </span>
+                                            <span 
+                                                v-if="selectedTemplate.includes(tpl.name)" 
+                                                class="text-[10px] font-extrabold text-indigo-600 bg-indigo-100/70 px-1.5 py-0.5 rounded"
+                                            >
+                                                선택됨
+                                            </span>
+                                        </div>
                                     </div>
-                                    <p class="text-[11px] text-slate-500 mt-0.5">{{ tpl.desc }}</p>
+                                    <p 
+                                        class="text-[11px] leading-relaxed pl-6 transition-colors"
+                                        :class="selectedTemplate.includes(tpl.name) ? 'text-indigo-900/80' : 'text-slate-500'"
+                                    >
+                                        {{ tpl.desc }}
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -425,6 +491,7 @@
                 </div>
 
                 <div class="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
+
                     <!-- Difficulty Selection (4 Tiers) -->
                     <div>
                         <label class="text-sm font-bold text-slate-900 block mb-3">
@@ -577,7 +644,9 @@
                         </button>
                         <button 
                             @click="startGeneratingQuestions" 
-                            class="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-lg shadow-indigo-100 transition flex items-center justify-center space-x-2 cursor-pointer"
+                            class="flex-1 py-3 text-white text-sm font-bold rounded-xl shadow-lg shadow-indigo-100 transition flex items-center justify-center space-x-2"
+                            :class="selectedTemplate.length === 0 ? 'bg-slate-300 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 cursor-pointer'"
+                            :disabled="selectedTemplate.length === 0"
                         >
                             <span>✨ 수능 국어 {{ questionCount }}문항 출제 시작</span>
                         </button>
@@ -945,61 +1014,13 @@
                 
                 const defaultProviders = {
                     cerebras: {
-                        name: "Cerebras (세레브라스 - 초당 2,000+ 토큰 세계 최고속)",
-                        default_model: "llama-3.3-70b",
+                        name: "Cerebras AI",
+                        default_model: "gpt-oss-120b",
                         models: [
-                            { id: "llama-3.3-70b", name: "Llama 3.3 70B (추천, 극초고속 플래그십)" },
-                            { id: "llama3.1-70b", name: "Llama 3.1 70B (초고속 고성능)" },
-                            { id: "llama3.1-8b", name: "Llama 3.1 8B (초경량 순간 응답)" }
+                            { id: "gpt-oss-120b", name: "GPT OSS 120B (추천, 초고속 플래그십)" },
+                            { id: "qwen-3.8-27b", name: "Qwen 3.8 27B (경량 고속)" }
                         ],
                         key_url: "https://cloud.cerebras.ai/"
-                    },
-                    groq: {
-                        name: "Groq (초고속 / 무료 티어 지원)",
-                        default_model: "llama-3.1-8b-instant",
-                        models: [
-                            { id: "llama-3.1-8b-instant", name: "Llama 3.1 8B Instant (공식 표준 권장 / 초고속)" },
-                            { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B Versatile (최신 대형 플래그십)" },
-                            { id: "llama-3.1-70b-versatile", name: "Llama 3.1 70B Versatile (고성능)" },
-                            { id: "deepseek-r1-distill-llama-70b", name: "DeepSeek R1 Distill Llama 70B (수능 킬러/심층 추론)" }
-                        ],
-                        key_url: "https://console.groq.com/keys"
-                    },
-                    deepseek: {
-                        name: "DeepSeek (딥시크 - 수능 고난도 추론)",
-                        default_model: "deepseek-chat",
-                        models: [
-                            { id: "deepseek-chat", name: "DeepSeek V3 (지문 정밀 분석 & 수능 표준 출제)" },
-                            { id: "deepseek-reasoner", name: "DeepSeek R1 (수능 킬러문항 심층 추론)" }
-                        ],
-                        key_url: "https://platform.deepseek.com/api_keys"
-                    },
-                    solar: {
-                        name: "Upstage Solar (업스테이지 솔라 - 한국어 특화)",
-                        default_model: "solar-pro",
-                        models: [
-                            { id: "solar-pro", name: "Solar Pro (최신 한국어 플래그십)" },
-                            { id: "solar-mini", name: "Solar Mini (경량화 고속 모델)" }
-                        ],
-                        key_url: "https://console.upstage.ai/"
-                    },
-                    openai: {
-                        name: "OpenAI (GPT-4o / o1)",
-                        default_model: "gpt-4o-mini",
-                        models: [
-                            { id: "gpt-4o-mini", name: "GPT-4o Mini (경제적 고성능)" },
-                            { id: "gpt-4o", name: "GPT-4o (최고 성능 플래그십)" }
-                        ],
-                        key_url: "https://platform.openai.com/api-keys"
-                    },
-                    gemini: {
-                        name: "Google Gemini",
-                        default_model: "gemini-2.0-flash",
-                        models: [
-                            { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash (초고속 멀티모달)" },
-                            { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro (초장문 심층 독해)" }
-                        ],
-                        key_url: "https://aistudio.google.com/app/apikey"
                     }
                 };
 
@@ -1009,20 +1030,10 @@
                 const selectedProvider = ref('cerebras');
                 const activeTabProvider = ref('cerebras');
                 const providerKeys = reactive({
-                    cerebras: '',
-                    groq: '',
-                    deepseek: '',
-                    solar: '',
-                    openai: '',
-                    gemini: ''
+                    cerebras: ''
                 });
                 const providerModels = reactive({
-                    cerebras: 'llama-3.3-70b',
-                    groq: 'llama-3.1-8b-instant',
-                    deepseek: 'deepseek-chat',
-                    solar: 'solar-pro',
-                    openai: 'gpt-4o-mini',
-                    gemini: 'gemini-2.0-flash'
+                    cerebras: 'gpt-oss-120b'
                 });
                 const hasApiKey = ref(false);
                 const pageRangeInput = ref('');
@@ -1035,7 +1046,7 @@
                 const originalPassageBackup = ref('');
                 const showPassagePreview = ref(false);
                 const isSummaryConfirmed = ref(false);
-                const selectedTemplate = ref('수능 종합 모의고사형 (다양한 유형)');
+                const selectedTemplate = ref(['수능 종합 모의고사형 (다양한 유형)']);
 
                 // Step 3 State
                 const difficulty = ref('극악 킬러 (만점 방지용)');
@@ -1054,15 +1065,7 @@
                 });
 
                 const getProviderTabLabel = (pKey) => {
-                    const map = {
-                        cerebras: '🚀 Cerebras (초고속)',
-                        groq: '⚡ Groq',
-                        deepseek: '🧠 DeepSeek',
-                        solar: '☀️ Solar',
-                        openai: '🤖 OpenAI',
-                        gemini: '💎 Gemini'
-                    };
-                    return map[pKey] || pKey;
+                    return 'Cerebras AI';
                 };
 
                 // Parsed Data
@@ -1138,14 +1141,7 @@
                 });
 
                 const currentProviderName = computed(() => {
-                    const p = selectedProvider.value;
-                    if (p === 'cerebras') return 'Cerebras';
-                    if (p === 'groq') return 'Groq';
-                    if (p === 'deepseek') return 'DeepSeek';
-                    if (p === 'solar') return 'Solar';
-                    if (p === 'openai') return 'OpenAI';
-                    if (p === 'gemini') return 'Gemini';
-                    return p;
+                    return 'Cerebras';
                 });
 
                 const currentModelId = computed(() => {
@@ -1295,8 +1291,10 @@
                         parsedData.value = data;
                         originalPassageBackup.value = data.passage || '';
                         step2Tab.value = 'edit';
-                        if (data.detected_style && data.detected_style.has_question_style) {
-                            selectedTemplate.value = data.detected_style.template_name;
+                        if (data.detected_style && data.detected_style.template_name) {
+                            selectedTemplate.value = [data.detected_style.template_name];
+                        } else {
+                            selectedTemplate.value = ['수능 종합 모의고사형 (다양한 유형)'];
                         }
                         isSummaryConfirmed.value = false;
                         currentStep.value = 2;
@@ -1350,12 +1348,38 @@
                         parsedData.value.filename = `수능_국어_샘플_${sampleId}.txt`;
                         originalPassageBackup.value = data.passage || '';
                         step2Tab.value = 'edit';
+                        if (data.detected_style && data.detected_style.template_name) {
+                            selectedTemplate.value = [data.detected_style.template_name];
+                        } else {
+                            selectedTemplate.value = ['수능 종합 모의고사형 (다양한 유형)'];
+                        }
                         isSummaryConfirmed.value = false;
                         currentStep.value = 2;
+
                     } catch (err) {
                         errorMessage.value = err.message;
                     } finally {
                         isAnalyzing.value = false;
+                    }
+                };
+
+                const toggleTemplate = (name) => {
+                    const aiSuggested = (parsedData.value.detected_style && parsedData.value.detected_style.template_name) || '수능 종합 모의고사형 (다양한 유형)';
+                    const idx = selectedTemplate.value.indexOf(name);
+
+                    if (idx > -1) {
+                        // 이미 선택된 항목을 클릭하여 해제하는 경우
+                        selectedTemplate.value.splice(idx, 1);
+                        errorMessage.value = '';
+
+                        // 모든 유형이 해제되면 자동으로 AI 제안 유형을 다시 기본 선택
+                        if (selectedTemplate.value.length === 0) {
+                            selectedTemplate.value.push(aiSuggested);
+                        }
+                    } else {
+                        // 새 항목을 선택하는 경우
+                        selectedTemplate.value.push(name);
+                        errorMessage.value = '';
                     }
                 };
 
@@ -1384,7 +1408,7 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 passage: parsedData.value.passage,
-                                question_style: selectedTemplate.value,
+                                question_style: selectedTemplate.value.join(', '),
                                 difficulty: difficulty.value,
                                 question_count: Math.max(1, Math.min(20, questionCount.value || 3)),
                                 subject: 'korean',
@@ -1424,7 +1448,7 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 passage: parsedData.value.passage,
-                                question_style: selectedTemplate.value,
+                                question_style: selectedTemplate.value.join(', '),
                                 difficulty: currentDifficulty.value,
                                 existing_questions: examQuestions.value,
                                 target_number: targetNumber,
@@ -1568,6 +1592,7 @@
                     showPassagePreview,
                     isSummaryConfirmed,
                     selectedTemplate,
+                    toggleTemplate,
                     templatePresets,
                     step2Tab,
                     originalPassageBackup,
